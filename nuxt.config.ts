@@ -8,7 +8,11 @@ console.log(`Current NODE_ENV: ${process.env.NODE_ENV}`)
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-22',
   devtools: { enabled: true },
-  css: ['~/assets/css/main.css'],
+  alias: {
+    '~': resolve(__dirname, '.'),
+    '@': resolve(__dirname, 'app'),
+  },
+  css: ['~/app/assets/css/main.css'],
   modules: [
     '@nuxt/ui',
     '@nuxt/eslint',

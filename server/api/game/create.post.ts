@@ -5,6 +5,7 @@
 
 import type { CreateGameRequest } from '~/shared/types/game'
 import { createGame } from '~/server/services/gameService'
+import { validateCreateGameRequest } from '~/shared/utils/validation'
 
 export default defineEventHandler(async (event) => {
   const body = await readBody<CreateGameRequest>(event)
@@ -14,6 +15,20 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 400,
       statusMessage: 'Missing required fields: playerCount, creatorDisplayName',
+    })
+  }
+
+  // Validate game creation parameters
+  const validation = validateCreateGameRequest(
+    body.playerCount,
+    body.creatorDisplayName,
+    body.botCount || 0,
+  )
+
+  if (!validation.valid) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: validation.errors.join(', '),
     })
   }
 

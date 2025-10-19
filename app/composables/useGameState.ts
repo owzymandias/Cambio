@@ -26,6 +26,8 @@ export function useGameState(gameId: string) {
 
   const isLoading = ref(false)
   const error = ref<string | null>(null)
+  const showInitialCards = ref(false)
+  const hasViewedInitialCards = ref(false)
 
   // WebSocket connection (will be initialized by gameSocket)
   const socket = ref<any>(null)
@@ -287,6 +289,50 @@ export function useGameState(gameId: string) {
   })
 
   /**
+   * Check if game is in initial view phase
+   */
+  const isInInitialViewPhase = computed(() => {
+    return gameSession.value?.phase === 'initial_view'
+  })
+
+  /**
+   * View initial cards (bottom row)
+   */
+  function viewInitialCards() {
+    if (hasViewedInitialCards.value) {
+      error.value = 'You have already viewed your initial cards'
+      return
+    }
+
+    if (!isInInitialViewPhase.value) {
+      error.value = 'Can only view initial cards during setup phase'
+      return
+    }
+
+    showInitialCards.value = true
+  }
+
+  /**
+   * Hide initial cards after viewing
+   */
+  function hideInitialCards() {
+    showInitialCards.value = false
+    hasViewedInitialCards.value = true
+
+    // Update the player's hasViewedInitialCards status on the server
+    if (currentPlayer.value) {
+      $fetch(`/api/game/${gameId}/view-initial`, {
+        method: 'POST',
+        body: {
+          playerId: currentPlayer.value.id,
+        },
+      }).catch((err) => {
+        console.error('Error updating viewed initial cards status:', err)
+      })
+    }
+  }
+
+  /**
    * Handle WebSocket events for real-time updates
    */
   function handleGameEvent(event: GameEvent) {
@@ -352,6 +398,8 @@ export function useGameState(gameId: string) {
     isMyTurn,
     isLoading: readonly(isLoading),
     error: readonly(error),
+    showInitialCards: readonly(showInitialCards),
+    hasViewedInitialCards: readonly(hasViewedInitialCards),
 
     // Computed
     myCards,
@@ -360,6 +408,7 @@ export function useGameState(gameId: string) {
     topDiscardCard,
     isGameInProgress,
     isGameCompleted,
+    isInInitialViewPhase,
 
     // Actions
     loadGameSession,
@@ -369,6 +418,8 @@ export function useGameState(gameId: string) {
     discardCard,
     useSpecialPower,
     callCambio,
+    viewInitialCards,
+    hideInitialCards,
 
     // WebSocket
     initializeSocket,

@@ -5,6 +5,7 @@
 
 import type { JoinGameRequest } from '~/shared/types/game'
 import { joinGame } from '~/server/services/gameService'
+import { validateJoinGameRequest } from '~/shared/utils/validation'
 
 export default defineEventHandler(async (event) => {
   const gameId = getRouterParam(event, 'id')
@@ -21,6 +22,16 @@ export default defineEventHandler(async (event) => {
     throw createError({
       statusCode: 400,
       statusMessage: 'Display name is required',
+    })
+  }
+
+  // Validate join request
+  const validation = validateJoinGameRequest(gameId, body.displayName)
+
+  if (!validation.valid) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: validation.errors.join(', '),
     })
   }
 
