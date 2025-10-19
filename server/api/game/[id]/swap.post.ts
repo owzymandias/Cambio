@@ -4,6 +4,7 @@
  */
 
 import type { SwapCardRequest } from '~/shared/types/game'
+import { swapCard } from '~/server/services/gameService'
 
 export default defineEventHandler(async (event) => {
   const gameId = getRouterParam(event, 'id')
@@ -16,9 +17,33 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // TODO: Implement swap card logic in Phase 4 (User Story 2)
-  throw createError({
-    statusCode: 501,
-    statusMessage: 'Swap card functionality not yet implemented',
-  })
+  if (!body.drawnCardId || !body.targetCardPosition) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Drawn card ID and target position are required',
+    })
+  }
+
+  // TODO: Get playerId from session/auth
+  const playerId = body.playerId as string | undefined
+
+  if (!playerId) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Player ID is required',
+    })
+  }
+
+  const session = await swapCard(
+    gameId,
+    playerId,
+    body.drawnCardId,
+    body.targetCardPosition,
+  )
+
+  return {
+    success: true,
+    message: 'Card swapped successfully',
+    session,
+  }
 })

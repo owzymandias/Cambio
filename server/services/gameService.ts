@@ -26,7 +26,7 @@ import {
   shuffle,
 } from '~/server/utils/cardUtils'
 import { gameEvents } from '~/server/utils/gameSocket'
-import { card, gameScore, gameSession, player } from '~/server/database/schema/game'
+import { card, gameScore, gameSession, player, turn } from '~/server/database/schema/game'
 
 /**
  * Create a new game session
@@ -381,5 +381,422 @@ export function validateGamePhase(session: GameSession, allowedPhases: string[])
       statusCode: 400,
       statusMessage: ERROR_MESSAGES.INVALID_ACTION,
     })
+  }
+}
+
+/**
+ * Draw a card from the deck
+ */
+export async function drawFromDeck(gameId: string, playerId: string): Promise<{ session: GameSession, drawnCard: Card }> {
+  const db = useDb()
+
+  // Get and validate game session
+  const session = await getGameSession(gameId)
+  validatePlayerTurn(session, playerId)
+  validateGamePhase(session, ['playing'])
+
+  // Get the top card from the deck
+  const [topCard] = await db
+    .select()
+    .from(card)
+    .where(eq(card.gameSessionId, gameId))
+    .where(eq(card.location, 'deck'))
+    .orderBy(card.orderInPile)
+    .limit(1)
+
+  if (!topCard) {
+    // Need to reshuffle discard pile into deck
+    await reshuffleDiscardPile(gameId)
+
+    // Try again
+    const [reshuffledCard] = await db
+      .select()
+      .from(card)
+      .where(eq(card.gameSessionId, gameId))
+      .where(eq(card.location, 'deck'))
+      .orderBy(card.orderInPile)
+      .limit(1)
+
+    if (!reshuffledCard) {
+      throw createError({
+        statusCode: 400,
+        statusMessage: 'No cards available in deck',
+      })
+    }
+  }
+
+  const cardToDraw = topCard
+
+  // Mark card as drawn (temporary location)
+  await db
+    .update(card)
+    .set({
+      location: 'drawn',
+      visibility: 'visible',
+    })
+    .where(eq(card.id, cardToDraw.id))
+
+  // Record the turn
+  await db
+    .insert(turn)
+    .values({
+      gameSessionId: gameId,
+      playerId,
+      action: 'draw',
+      drawSource: 'deck',
+      cardDrawnId: cardToDraw.id,
+    })
+
+  // Build drawn card object
+  const drawnCard: Card = {
+    id: cardToDraw.id,
+    suit: cardToDraw.suit as Suit,
+    rank: cardToDraw.rank as Rank,
+    pointValue: cardToDraw.pointValue,
+    position: { row: 0, col: 0 },
+    visibility: 'visible',
+    ownerId: playerId,
+  }
+
+  // Broadcast card drawn event
+  gameEvents.cardDrawn(gameId, playerId, 'deck')
+
+  // Get updated session
+  const updatedSession = await getGameSession(gameId)
+
+  return { session: updatedSession, drawnCard }
+}
+
+/**
+ * Draw a card from the discard pile
+ */
+export async function drawFromDiscard(gameId: string, playerId: string): Promise<{ session: GameSession, drawnCard: Card }> {
+  const db = useDb()
+
+  // Get and validate game session
+  const session = await getGameSession(gameId)
+  validatePlayerTurn(session, playerId)
+  validateGamePhase(session, ['playing'])
+
+  // Get the top card from the discard pile
+  const discardCards = await db
+    .select()
+    .from(card)
+    .where(eq(card.gameSessionId, gameId))
+    .where(eq(card.location, 'discard'))
+    .orderBy(card.orderInPile)
+
+  if (discardCards.length === 0) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Discard pile is empty',
+    })
+  }
+
+  // Get the top card (highest orderInPile)
+  const topCard = discardCards[discardCards.length - 1]
+
+  // Mark card as drawn
+  await db
+    .update(card)
+    .set({
+      location: 'drawn',
+      visibility: 'visible',
+    })
+    .where(eq(card.id, topCard.id))
+
+  // Record the turn
+  await db
+    .insert(turn)
+    .values({
+      gameSessionId: gameId,
+      playerId,
+      action: 'draw',
+      drawSource: 'discard',
+      cardDrawnId: topCard.id,
+    })
+
+  // Build drawn card object
+  const drawnCard: Card = {
+    id: topCard.id,
+    suit: topCard.suit as Suit,
+    rank: topCard.rank as Rank,
+    pointValue: topCard.pointValue,
+    position: { row: 0, col: 0 },
+    visibility: 'visible',
+    ownerId: playerId,
+  }
+
+  // Broadcast card drawn event
+  gameEvents.cardDrawn(gameId, playerId, 'discard')
+
+  // Get updated session
+  const updatedSession = await getGameSession(gameId)
+
+  return { session: updatedSession, drawnCard }
+}
+
+/**
+ * Swap a drawn card with a card in the player's hand
+ */
+export async function swapCard(
+  gameId: string,
+  playerId: string,
+  drawnCardId: string,
+  targetPosition: CardPosition,
+): Promise<GameSession> {
+  const db = useDb()
+
+  // Get and validate game session
+  const session = await getGameSession(gameId)
+  validatePlayerTurn(session, playerId)
+  validateGamePhase(session, ['playing'])
+
+  // Verify the drawn card exists and is in "drawn" location
+  const [drawnCard] = await db
+    .select()
+    .from(card)
+    .where(eq(card.id, drawnCardId))
+    .where(eq(card.location, 'drawn'))
+
+  if (!drawnCard) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid card - must draw a card first',
+    })
+  }
+
+  // Find the card in the player's hand at the target position
+  const [targetCard] = await db
+    .select()
+    .from(card)
+    .where(eq(card.gameSessionId, gameId))
+    .where(eq(card.ownerId, playerId))
+    .where(eq(card.location, 'hand'))
+    .where(eq(card.positionRow, targetPosition.row))
+    .where(eq(card.positionCol, targetPosition.col))
+
+  if (!targetCard) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid target position',
+    })
+  }
+
+  // Swap the cards
+  // Put drawn card into player's hand at target position
+  await db
+    .update(card)
+    .set({
+      ownerId: playerId,
+      location: 'hand',
+      positionRow: targetPosition.row,
+      positionCol: targetPosition.col,
+      visibility: 'hidden',
+    })
+    .where(eq(card.id, drawnCardId))
+
+  // Put target card into discard pile
+  const discardCards = await db
+    .select()
+    .from(card)
+    .where(eq(card.gameSessionId, gameId))
+    .where(eq(card.location, 'discard'))
+
+  await db
+    .update(card)
+    .set({
+      ownerId: null,
+      location: 'discard',
+      positionRow: null,
+      positionCol: null,
+      visibility: 'visible',
+      orderInPile: discardCards.length,
+    })
+    .where(eq(card.id, targetCard.id))
+
+  // Record the turn
+  await db
+    .insert(turn)
+    .values({
+      gameSessionId: gameId,
+      playerId,
+      action: 'swap',
+      oldCardId: targetCard.id,
+      newCardId: drawnCardId,
+    })
+
+  // Move to next player's turn
+  await advanceTurn(gameId)
+
+  // Broadcast card swapped event
+  gameEvents.cardSwapped(gameId, playerId, drawnCardId, targetCard.id)
+
+  // Get updated session
+  return getGameSession(gameId)
+}
+
+/**
+ * Discard a drawn card without swapping
+ */
+export async function discardDrawnCard(
+  gameId: string,
+  playerId: string,
+  drawnCardId: string,
+): Promise<GameSession> {
+  const db = useDb()
+
+  // Get and validate game session
+  const session = await getGameSession(gameId)
+  validatePlayerTurn(session, playerId)
+  validateGamePhase(session, ['playing'])
+
+  // Verify the drawn card exists and is in "drawn" location
+  const [drawnCard] = await db
+    .select()
+    .from(card)
+    .where(eq(card.id, drawnCardId))
+    .where(eq(card.location, 'drawn'))
+
+  if (!drawnCard) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Invalid card - must draw a card first',
+    })
+  }
+
+  // Get current discard pile size
+  const discardCards = await db
+    .select()
+    .from(card)
+    .where(eq(card.gameSessionId, gameId))
+    .where(eq(card.location, 'discard'))
+
+  // Put card into discard pile
+  await db
+    .update(card)
+    .set({
+      location: 'discard',
+      visibility: 'visible',
+      orderInPile: discardCards.length,
+      ownerId: null,
+    })
+    .where(eq(card.id, drawnCardId))
+
+  // Record the turn
+  await db
+    .insert(turn)
+    .values({
+      gameSessionId: gameId,
+      playerId,
+      action: 'discard',
+      cardDrawnId: drawnCardId,
+    })
+
+  // Move to next player's turn
+  await advanceTurn(gameId)
+
+  // Broadcast card discarded event
+  gameEvents.cardDiscarded(gameId, playerId, drawnCardId)
+
+  // Get updated session
+  return getGameSession(gameId)
+}
+
+/**
+ * Advance to the next player's turn
+ */
+async function advanceTurn(gameId: string): Promise<void> {
+  const db = useDb()
+
+  // Get current session
+  const session = await getGameSession(gameId)
+
+  // Find current player
+  const currentPlayerIndex = session.players.findIndex(p => p.id === session.currentTurnPlayerId)
+
+  if (currentPlayerIndex === -1) {
+    throw createError({
+      statusCode: 500,
+      statusMessage: 'Current player not found',
+    })
+  }
+
+  // Get next player (circular)
+  const nextPlayerIndex = (currentPlayerIndex + 1) % session.players.length
+  const nextPlayer = session.players[nextPlayerIndex]
+
+  // Update game session with next player
+  await db
+    .update(gameSession)
+    .set({
+      currentTurnPlayerId: nextPlayer.id,
+      updatedAt: new Date(),
+    })
+    .where(eq(gameSession.id, gameId))
+
+  // Check if all players have viewed initial cards and transition to playing phase
+  const allPlayersViewed = session.players.every(p => p.hasViewedInitialCards)
+  if (session.phase === 'initial_view' && allPlayersViewed) {
+    await db
+      .update(gameSession)
+      .set({
+        phase: 'playing',
+        updatedAt: new Date(),
+      })
+      .where(eq(gameSession.id, gameId))
+  }
+
+  // Broadcast turn started event
+  gameEvents.turnStarted(gameId, nextPlayer.id)
+}
+
+/**
+ * Reshuffle discard pile back into deck
+ */
+async function reshuffleDiscardPile(gameId: string): Promise<void> {
+  const db = useDb()
+
+  // Get all discard pile cards except the top one (keep at least one in discard)
+  const discardCards = await db
+    .select()
+    .from(card)
+    .where(eq(card.gameSessionId, gameId))
+    .where(eq(card.location, 'discard'))
+    .orderBy(card.orderInPile)
+
+  if (discardCards.length <= 1) {
+    throw createError({
+      statusCode: 400,
+      statusMessage: 'Not enough cards to reshuffle',
+    })
+  }
+
+  // Keep the top card in discard pile, shuffle the rest back into deck
+  const cardsToShuffle = discardCards.slice(0, -1)
+
+  // Shuffle the cards
+  const shuffledIndexes = shuffle(cardsToShuffle.map((_, i) => i))
+
+  // Update cards to be in deck with new order
+  for (let i = 0; i < cardsToShuffle.length; i++) {
+    await db
+      .update(card)
+      .set({
+        location: 'deck',
+        orderInPile: shuffledIndexes[i],
+        visibility: 'hidden',
+      })
+      .where(eq(card.id, cardsToShuffle[i].id))
+  }
+
+  // Update the remaining top card in discard pile
+  if (discardCards.length > 0) {
+    await db
+      .update(card)
+      .set({
+        orderInPile: 0,
+      })
+      .where(eq(card.id, discardCards[discardCards.length - 1].id))
   }
 }

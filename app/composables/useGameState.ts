@@ -87,13 +87,21 @@ export function useGameState(gameId: string) {
       return
     }
 
+    if (!currentPlayer.value) {
+      error.value = 'Player not found'
+      return
+    }
+
     isLoading.value = true
     error.value = null
 
     try {
       const response = await $fetch<{ session: GameSession, drawnCard: Card }>(`/api/game/${gameId}/draw`, {
         method: 'POST',
-        body: { source },
+        body: {
+          source,
+          playerId: currentPlayer.value.id,
+        },
       })
 
       gameSession.value = response.session
@@ -118,6 +126,11 @@ export function useGameState(gameId: string) {
       return
     }
 
+    if (!currentPlayer.value) {
+      error.value = 'Player not found'
+      return
+    }
+
     isLoading.value = true
     error.value = null
 
@@ -127,6 +140,7 @@ export function useGameState(gameId: string) {
         body: {
           drawnCardId,
           targetCardPosition: targetPosition,
+          playerId: currentPlayer.value.id,
         },
       })
 
@@ -151,13 +165,21 @@ export function useGameState(gameId: string) {
       return
     }
 
+    if (!currentPlayer.value) {
+      error.value = 'Player not found'
+      return
+    }
+
     isLoading.value = true
     error.value = null
 
     try {
       const response = await $fetch<GameSession>(`/api/game/${gameId}/discard`, {
         method: 'POST',
-        body: { cardId },
+        body: {
+          cardId,
+          playerId: currentPlayer.value.id,
+        },
       })
 
       gameSession.value = response

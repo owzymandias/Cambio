@@ -115,11 +115,13 @@ export interface JoinGameRequest {
 
 export interface DrawCardRequest {
   source: DrawSource
+  playerId?: string // TODO: Remove when auth is implemented
 }
 
 export interface SwapCardRequest {
   drawnCardId: string
   targetCardPosition: CardPosition
+  playerId?: string // TODO: Remove when auth is implemented
 }
 
 export interface UsePowerRequest {
