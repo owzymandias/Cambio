@@ -2,6 +2,8 @@
  * Shared types and interfaces for Cambio card game
  */
 
+import { z } from 'zod'
+
 export type Suit = 'hearts' | 'diamonds' | 'clubs' | 'spades'
 export type Rank = 'A' | '2' | '3' | '4' | '5' | '6' | '7' | '8' | '9' | '10' | 'J' | 'Q' | 'K'
 
@@ -138,4 +140,84 @@ export interface GameScore {
   isCambioCaller: boolean
   penaltyApplied: boolean
   isWinner: boolean
+}
+
+// Power Activation Request Types (with Zod validation)
+export const PowerActivationRequestSchema = z.discriminatedUnion('powerType', [
+  z.object({
+    powerType: z.literal('peek_own'),
+    cardIndex: z.number().int().min(0).max(3),
+  }),
+  z.object({
+    powerType: z.literal('peek_opponent'),
+    targetPlayerId: z.string().uuid(),
+    cardIndex: z.number().int().min(0).max(3),
+  }),
+  z.object({
+    powerType: z.literal('blind_swap'),
+    myCardIndex: z.number().int().min(0).max(3),
+    targetPlayerId: z.string().uuid(),
+    targetCardIndex: z.number().int().min(0).max(3),
+  }),
+  z.object({
+    powerType: z.literal('look_own'),
+  }),
+])
+
+export type PowerActivationRequest = z.infer<typeof PowerActivationRequestSchema>
+
+export interface PowerActivationResult {
+  success: boolean
+  message: string
+  revealedCard?: {
+    rank: Rank
+    suit: Suit
+    pointValue: number
+  }
+}
+
+// Cambio Call Request/Response
+export const CambioCallRequestSchema = z.object({
+  playerId: z.string().uuid().optional(),
+})
+
+export type CambioCallRequest = z.infer<typeof CambioCallRequestSchema>
+
+export interface CambioCallResult {
+  success: boolean
+  message: string
+  finalRoundStarted: boolean
+}
+
+// Player Score (for final scoring display)
+export interface PlayerScore {
+  playerId: string
+  displayName: string
+  baseScore: number
+  finalScore: number
+  isCambioCaller: boolean
+  penaltyApplied: boolean
+  isWinner: boolean
+  cards: Array<{
+    rank: Rank
+    suit: Suit
+    pointValue: number
+  }>
+}
+
+// Winner Info
+export interface WinnerInfo {
+  playerId: string
+  displayName: string
+  finalScore: number
+}
+
+// Scores Response (from GET /api/game/[id]/scores)
+export interface ScoresResponse {
+  gameId: string
+  phase: GamePhase
+  completedAt: Date | null
+  cambioCallerId: string | null
+  scores: PlayerScore[]
+  winners: WinnerInfo[]
 }

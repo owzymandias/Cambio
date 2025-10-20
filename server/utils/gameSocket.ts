@@ -9,13 +9,20 @@
 import type { GameEvent } from '~/shared/types/game'
 import { WEBSOCKET_EVENTS } from '~/shared/constants/game'
 
+// Connection type with optional player ID
+type Connection = {
+  send: (data: any) => void
+  close: () => void
+  playerId?: string
+}
+
 // Store active connections per game
-const gameConnections = new Map<string, Set<{ send: (data: any) => void, close: () => void }>>()
+const gameConnections = new Map<string, Set<Connection>>()
 
 /**
  * Add a client connection to a game room
  */
-export function joinGameRoom(gameId: string, connection: { send: (data: any) => void, close: () => void }) {
+export function joinGameRoom(gameId: string, connection: Connection) {
   if (!gameConnections.has(gameId)) {
     gameConnections.set(gameId, new Set())
   }
@@ -32,7 +39,7 @@ export function joinGameRoom(gameId: string, connection: { send: (data: any) => 
 /**
  * Remove a client connection from a game room
  */
-export function leaveGameRoom(gameId: string, connection: { send: (data: any) => void, close: () => void }) {
+export function leaveGameRoom(gameId: string, connection: Connection) {
   const connections = gameConnections.get(gameId)
   if (connections) {
     connections.delete(connection)
@@ -73,6 +80,44 @@ export function broadcastToGame(gameId: string, event: GameEvent) {
       // Remove failed connection
       connections.delete(connection)
     }
+  }
+}
+
+/**
+ * Broadcast a game event to a specific player in a game room (private event)
+ */
+export function broadcastToPlayer(gameId: string, playerId: string, event: GameEvent) {
+  const connections = gameConnections.get(gameId)
+
+  if (!connections || connections.size === 0) {
+    console.log(`No active connections for game ${gameId}`)
+    return
+  }
+
+  const payload = {
+    type: WEBSOCKET_EVENTS.GAME_STATE_UPDATE,
+    data: event,
+  }
+
+  console.log(`Broadcasting to player ${playerId} in game ${gameId}:`, payload.type)
+
+  // Send only to the specific player's connection(s)
+  let sent = false
+  for (const connection of connections) {
+    if (connection.playerId === playerId) {
+      try {
+        connection.send(payload)
+        sent = true
+      }
+      catch (err) {
+        console.error('Error sending to player:', err)
+        connections.delete(connection)
+      }
+    }
+  }
+
+  if (!sent) {
+    console.warn(`No active connection found for player ${playerId} in game ${gameId}`)
   }
 }
 

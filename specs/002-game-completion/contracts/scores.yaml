@@ -1,0 +1,282 @@
+openapi: 3.1.0
+info:
+  title: Cambio Game - Final Scores API
+  version: 1.0.0
+  description: API contract for retrieving final game scores after game completion
+
+paths:
+  /api/game/{gameId}/scores:
+    get:
+      summary: Get final scores for a completed game
+      description: |
+        Retrieves final scores, penalties, and winner determination for a completed game.
+        Only available after the game reaches the "completed" phase.
+        Returns all players' scores, their final cards, penalty status, and winner flags.
+      operationId: getGameScores
+      tags:
+        - Game Data
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The UUID of the game session
+      responses:
+        '200':
+          description: Scores retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScoresResponse'
+              examples:
+                completedGame:
+                  summary: Completed 2-player game with Cambio penalty
+                  value:
+                    gameId: "550e8400-e29b-41d4-a716-446655440000"
+                    phase: "completed"
+                    completedAt: "2025-10-20T12:45:30.000Z"
+                    cambioCallerId: "661f9511-f3ac-52e5-b827-557766551111"
+                    scores:
+                      - playerId: "661f9511-f3ac-52e5-b827-557766551111"
+                        displayName: "Alice"
+                        baseScore: 15
+                        finalScore: 30
+                        isCambioCaller: true
+                        penaltyApplied: true
+                        isWinner: false
+                        cards:
+                          - rank: "7"
+                            suit: "hearts"
+                            pointValue: 7
+                          - rank: "8"
+                            suit: "diamonds"
+                            pointValue: 8
+                          - rank: "K"
+                            suit: "clubs"
+                            pointValue: 0
+                          - rank: "K"
+                            suit: "spades"
+                            pointValue: 0
+                      - playerId: "772g0622-g4bd-63f6-c938-668877662222"
+                        displayName: "Bob"
+                        baseScore: 12
+                        finalScore: 12
+                        isCambioCaller: false
+                        penaltyApplied: false
+                        isWinner: true
+                        cards:
+                          - rank: "A"
+                            suit: "hearts"
+                            pointValue: 1
+                          - rank: "3"
+                            suit: "diamonds"
+                            pointValue: 3
+                          - rank: "4"
+                            suit: "clubs"
+                            pointValue: 4
+                          - rank: "4"
+                            suit: "spades"
+                            pointValue: 4
+                    winners:
+                      - playerId: "772g0622-g4bd-63f6-c938-668877662222"
+                        displayName: "Bob"
+                        finalScore: 12
+                tiedGame:
+                  summary: 3-player game with tied winners (no Cambio call)
+                  value:
+                    gameId: "883h1733-h5ce-74g7-d049-779988773333"
+                    phase: "completed"
+                    completedAt: "2025-10-20T13:20:15.000Z"
+                    cambioCallerId: null
+                    scores:
+                      - playerId: "player1-uuid"
+                        displayName: "Charlie"
+                        baseScore: 10
+                        finalScore: 10
+                        isCambioCaller: false
+                        penaltyApplied: false
+                        isWinner: true
+                        cards: [...]
+                      - playerId: "player2-uuid"
+                        displayName: "Dana"
+                        baseScore: 10
+                        finalScore: 10
+                        isCambioCaller: false
+                        penaltyApplied: false
+                        isWinner: true
+                        cards: [...]
+                      - playerId: "player3-uuid"
+                        displayName: "Eve"
+                        baseScore: 15
+                        finalScore: 15
+                        isCambioCaller: false
+                        penaltyApplied: false
+                        isWinner: false
+                        cards: [...]
+                    winners:
+                      - playerId: "player1-uuid"
+                        displayName: "Charlie"
+                        finalScore: 10
+                      - playerId: "player2-uuid"
+                        displayName: "Dana"
+                        finalScore: 10
+        '404':
+          description: Game not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                gameNotFound:
+                  value:
+                    error: "Game not found"
+                    message: "No game found with ID: {gameId}"
+        '409':
+          description: Game not completed yet
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                notCompleted:
+                  value:
+                    error: "Game not completed"
+                    message: "Scores are only available for completed games"
+                    currentPhase: "final_round"
+
+components:
+  schemas:
+    ScoresResponse:
+      type: object
+      required:
+        - gameId
+        - phase
+        - completedAt
+        - scores
+        - winners
+      properties:
+        gameId:
+          type: string
+          format: uuid
+          description: UUID of the game session
+        phase:
+          type: string
+          enum: [completed]
+          description: Game phase (always "completed" for this endpoint)
+        completedAt:
+          type: string
+          format: date-time
+          description: ISO timestamp when the game was completed
+        cambioCallerId:
+          type: string
+          format: uuid
+          nullable: true
+          description: UUID of player who called Cambio (null if no Cambio call)
+        scores:
+          type: array
+          description: Array of player scores (ordered by turn order)
+          items:
+            $ref: '#/components/schemas/PlayerScore'
+        winners:
+          type: array
+          description: Array of winning player(s) (may be multiple for ties)
+          items:
+            $ref: '#/components/schemas/WinnerInfo'
+          minItems: 1
+
+    PlayerScore:
+      type: object
+      required:
+        - playerId
+        - displayName
+        - baseScore
+        - finalScore
+        - isCambioCaller
+        - penaltyApplied
+        - isWinner
+        - cards
+      properties:
+        playerId:
+          type: string
+          format: uuid
+          description: UUID of the player
+        displayName:
+          type: string
+          description: Player's display name
+        baseScore:
+          type: integer
+          minimum: 0
+          description: Sum of card point values before penalty
+        finalScore:
+          type: integer
+          minimum: 0
+          description: Final score after penalty applied (if any)
+        isCambioCaller:
+          type: boolean
+          description: True if this player called Cambio
+        penaltyApplied:
+          type: boolean
+          description: True if Cambio caller penalty (score doubled) was applied
+        isWinner:
+          type: boolean
+          description: True if this player has the lowest final score
+        cards:
+          type: array
+          description: Final hand of cards held by this player
+          items:
+            $ref: '#/components/schemas/Card'
+          minItems: 4
+          maxItems: 4
+
+    WinnerInfo:
+      type: object
+      required:
+        - playerId
+        - displayName
+        - finalScore
+      properties:
+        playerId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        finalScore:
+          type: integer
+          minimum: 0
+
+    Card:
+      type: object
+      required:
+        - rank
+        - suit
+        - pointValue
+      properties:
+        rank:
+          type: string
+          enum: [A, '2', '3', '4', '5', '6', '7', '8', '9', '10', J, Q, K]
+          description: Card rank
+        suit:
+          type: string
+          enum: [hearts, diamonds, clubs, spades]
+          description: Card suit
+        pointValue:
+          type: integer
+          minimum: 0
+          maximum: 10
+          description: Point value for scoring (K=0, A=1, 2-10=face, J/Q=10)
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        currentPhase:
+          type: string
+          description: Present in 409 error to indicate current game phase

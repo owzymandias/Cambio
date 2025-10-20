@@ -1,0 +1,280 @@
+openapi: 3.1.0
+info:
+  title: Cambio Game - Special Power Activation API
+  version: 1.0.0
+  description: API contract for activating special card powers during gameplay
+
+paths:
+  /api/game/{gameId}/power:
+    post:
+      summary: Activate a special card power
+      description: |
+        Activates a special power after discarding a power card (7, 8, 9, 10, J, Q, K).
+        Server validates the power type matches the discarded card and the selected target is valid.
+        Player can also skip/decline using the power.
+      operationId: activateSpecialPower
+      tags:
+        - Game Actions
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The UUID of the game session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/PeekOwnPowerRequest'
+                - $ref: '#/components/schemas/PeekOpponentPowerRequest'
+                - $ref: '#/components/schemas/BlindSwapPowerRequest'
+                - $ref: '#/components/schemas/LookOwnPowerRequest'
+                - $ref: '#/components/schemas/SkipPowerRequest'
+              discriminator:
+                propertyName: powerType
+            examples:
+              peekOwn:
+                summary: Peek at own card (7 or 8 discarded)
+                value:
+                  powerType: peek_own
+                  cardIndex: 2
+              peekOpponent:
+                summary: Peek at opponent's card (9 or 10 discarded)
+                value:
+                  powerType: peek_opponent
+                  targetPlayerId: 550e8400-e29b-41d4-a716-446655440000
+                  cardIndex: 1
+              blindSwap:
+                summary: Blind swap (J or Q discarded)
+                value:
+                  powerType: blind_swap
+                  myCardIndex: 0
+                  targetPlayerId: 550e8400-e29b-41d4-a716-446655440000
+                  targetCardIndex: 3
+              lookOwn:
+                summary: Auto-peek own card (K discarded)
+                value:
+                  powerType: look_own
+              skip:
+                summary: Skip using the power
+                value:
+                  skip: true
+      responses:
+        '200':
+          description: Power activated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PowerActivationResponse'
+              examples:
+                peekSuccess:
+                  summary: Peek power activated
+                  value:
+                    success: true
+                    message: "Peek power activated"
+                    powerActivationId: "7c9e6679-7425-40de-944b-e07fc1f90ae7"
+                    revealedCard:
+                      rank: "A"
+                      suit: "hearts"
+                      pointValue: 1
+                    expiresAt: "2025-10-20T12:34:39.000Z"
+                swapSuccess:
+                  summary: Blind swap completed
+                  value:
+                    success: true
+                    message: "Blind swap completed"
+                    powerActivationId: "8d0f7780-8536-51ef-b15c-f18gd2g01bf8"
+                skipSuccess:
+                  summary: Power skipped
+                  value:
+                    success: true
+                    message: "Power skipped"
+        '400':
+          description: Invalid request (wrong power type, invalid target, out of turn)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                invalidPowerType:
+                  summary: Power type doesn't match discarded card
+                  value:
+                    error: "Invalid power type"
+                    message: "Discarded card was a 7, expected peek_own power"
+                invalidTarget:
+                  summary: Target card index out of range
+                  value:
+                    error: "Invalid target"
+                    message: "Card index 5 is out of range (expected 0-3)"
+                notYourTurn:
+                  summary: Player attempting power activation out of turn
+                  value:
+                    error: "Not your turn"
+                    message: "Cannot activate power when it's not your turn"
+        '404':
+          description: Game not found or player not in game
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                gameNotFound:
+                  value:
+                    error: "Game not found"
+                    message: "No game found with ID: {gameId}"
+        '409':
+          description: Conflict (power window expired, game in wrong phase)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                windowExpired:
+                  value:
+                    error: "Power window expired"
+                    message: "Power activation window has closed"
+                wrongPhase:
+                  value:
+                    error: "Invalid game phase"
+                    message: "Cannot activate powers during final_round phase"
+
+components:
+  schemas:
+    PeekOwnPowerRequest:
+      type: object
+      required:
+        - powerType
+        - cardIndex
+      properties:
+        powerType:
+          type: string
+          enum: [peek_own]
+        cardIndex:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: Index of own card to peek at (0-3 for 2x2 grid)
+
+    PeekOpponentPowerRequest:
+      type: object
+      required:
+        - powerType
+        - targetPlayerId
+        - cardIndex
+      properties:
+        powerType:
+          type: string
+          enum: [peek_opponent]
+        targetPlayerId:
+          type: string
+          format: uuid
+          description: UUID of opponent player whose card to peek
+        cardIndex:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: Index of opponent's card to peek at (0-3)
+
+    BlindSwapPowerRequest:
+      type: object
+      required:
+        - powerType
+        - myCardIndex
+        - targetPlayerId
+        - targetCardIndex
+      properties:
+        powerType:
+          type: string
+          enum: [blind_swap]
+        myCardIndex:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: Index of own card to swap (0-3)
+        targetPlayerId:
+          type: string
+          format: uuid
+          description: UUID of opponent player to swap with
+        targetCardIndex:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: Index of opponent's card to swap (0-3)
+
+    LookOwnPowerRequest:
+      type: object
+      required:
+        - powerType
+      properties:
+        powerType:
+          type: string
+          enum: [look_own]
+        # No additional fields - server auto-selects random card
+
+    SkipPowerRequest:
+      type: object
+      required:
+        - skip
+      properties:
+        skip:
+          type: boolean
+          const: true
+          description: Indicates player is skipping the power activation
+
+    PowerActivationResponse:
+      type: object
+      required:
+        - success
+        - message
+      properties:
+        success:
+          type: boolean
+        message:
+          type: string
+        powerActivationId:
+          type: string
+          format: uuid
+          description: UUID of the special_power record created
+        revealedCard:
+          $ref: '#/components/schemas/RevealedCard'
+          description: Only present for peek powers
+        expiresAt:
+          type: string
+          format: date-time
+          description: ISO timestamp when peeked card will auto-hide (only for peek powers)
+
+    RevealedCard:
+      type: object
+      required:
+        - rank
+        - suit
+        - pointValue
+      properties:
+        rank:
+          type: string
+          enum: [A, '2', '3', '4', '5', '6', '7', '8', '9', '10', J, Q, K]
+        suit:
+          type: string
+          enum: [hearts, diamonds, clubs, spades]
+        pointValue:
+          type: integer
+          minimum: 0
+          maximum: 10
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true

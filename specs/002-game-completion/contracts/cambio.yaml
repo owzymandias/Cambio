@@ -1,0 +1,155 @@
+openapi: 3.1.0
+info:
+  title: Cambio Game - Cambio Call API
+  version: 1.0.0
+  description: API contract for calling "Cambio!" to trigger the final round
+
+paths:
+  /api/game/{gameId}/cambio:
+    post:
+      summary: Call "Cambio!" to end the game
+      description: |
+        Player calls "Cambio!" at the start of their turn, believing they have the lowest score.
+        This triggers the final round where all other players get exactly one more turn.
+        The caller's turn ends immediately and they cannot take additional actions.
+        Only one Cambio call is allowed per game.
+      operationId: callCambio
+      tags:
+        - Game Actions
+      parameters:
+        - name: gameId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+          description: The UUID of the game session
+      requestBody:
+        required: false
+        description: No request body required (empty POST or {})
+        content:
+          application/json:
+            schema:
+              type: object
+              properties: {}
+      responses:
+        '200':
+          description: Cambio call accepted, final round started
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CambioCallResponse'
+              examples:
+                success:
+                  summary: Cambio successfully called
+                  value:
+                    success: true
+                    message: "Cambio called! Final round begins."
+                    cambioCallerId: "550e8400-e29b-41d4-a716-446655440000"
+                    callerName: "Alice"
+                    finalRoundStarted: true
+                    remainingPlayers: 2
+                    nextTurnPlayerId: "661f9511-f3ac-52e5-b827-557766551111"
+        '400':
+          description: Invalid request (wrong game phase, not player's turn)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                notYourTurn:
+                  summary: Player trying to call Cambio when not their turn
+                  value:
+                    error: "Not your turn"
+                    message: "Cannot call Cambio when it's not your turn"
+                wrongPhase:
+                  summary: Game not in playing phase
+                  value:
+                    error: "Invalid game phase"
+                    message: "Cambio can only be called during the playing phase"
+        '404':
+          description: Game not found or player not in game
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                gameNotFound:
+                  value:
+                    error: "Game not found"
+                    message: "No game found with ID: {gameId}"
+        '409':
+          description: Conflict (Cambio already called in this game)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+              examples:
+                alreadyCalled:
+                  summary: Another player already called Cambio
+                  value:
+                    error: "Cambio already called"
+                    message: "Cambio has already been called by another player in this game"
+                    cambioCallerId: "772g0622-g4bd-63f6-c938-668877662222"
+                    callerName: "Bob"
+
+components:
+  schemas:
+    CambioCallResponse:
+      type: object
+      required:
+        - success
+        - message
+        - cambioCallerId
+        - callerName
+        - finalRoundStarted
+        - remainingPlayers
+      properties:
+        success:
+          type: boolean
+          description: Always true for successful Cambio call
+        message:
+          type: string
+          description: Human-readable confirmation message
+        cambioCallerId:
+          type: string
+          format: uuid
+          description: UUID of the player who called Cambio
+        callerName:
+          type: string
+          description: Display name of the Cambio caller
+        finalRoundStarted:
+          type: boolean
+          description: Always true (indicates final round has begun)
+        remainingPlayers:
+          type: integer
+          minimum: 1
+          description: Number of players who still need to take their final turn (excludes caller)
+        nextTurnPlayerId:
+          type: string
+          format: uuid
+          description: UUID of the next player to take their final turn
+
+    ErrorResponse:
+      type: object
+      required:
+        - error
+        - message
+      properties:
+        error:
+          type: string
+          description: Error code/type
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          additionalProperties: true
+          description: Additional context about the error (e.g., current caller info for 409)
+        cambioCallerId:
+          type: string
+          format: uuid
+          description: Present in 409 error when Cambio already called
+        callerName:
+          type: string
+          description: Present in 409 error when Cambio already called

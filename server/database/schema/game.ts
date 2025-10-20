@@ -45,6 +45,7 @@ export const player = pgTable('player', {
   turnOrder: integer('turn_order').notNull(),
   isConnected: boolean('is_connected').notNull().default(true),
   hasViewedInitialCards: boolean('has_viewed_initial_cards').notNull().default(false),
+  hasTakenFinalTurn: boolean('has_taken_final_turn').notNull().default(false),
   botMemory: jsonb('bot_memory'), // Store bot's card memory and strategy state
   createdAt: timestamp('created_at').defaultNow().notNull(),
   updatedAt: timestamp('updated_at')
