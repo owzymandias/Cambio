@@ -254,6 +254,27 @@ export function useGameState(gameId: string) {
   }
 
   /**
+   * Get game scores (only available when game is completed)
+   */
+  async function getScores() {
+    isLoading.value = true
+    error.value = null
+
+    try {
+      const response = await $fetch(`/api/game/${gameId}/scores`)
+      return response
+    }
+    catch (err: any) {
+      error.value = err.data?.message || 'Failed to get scores'
+      console.error('Error getting scores:', err)
+      throw err
+    }
+    finally {
+      isLoading.value = false
+    }
+  }
+
+  /**
    * Get my player's cards
    */
   const myCards = computed(() => {
@@ -440,6 +461,7 @@ export function useGameState(gameId: string) {
     discardCard,
     useSpecialPower,
     callCambio,
+    getScores,
     viewInitialCards,
     hideInitialCards,
 

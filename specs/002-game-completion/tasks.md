@@ -80,13 +80,13 @@ description: "Task list for Game Completion - Special Powers & Scoring"
 
 #### Client Components
 
-- [ ] T020 [P] [US1] Create app/components/Game/PowerModal.vue with props (powerType, players, myCards) and emits (activate, skip)
-- [ ] T021 [P] [US1] Implement card selection grid (2x2) in PowerModal.vue with touch-friendly buttons (44x44px minimum) and selected state styling
-- [ ] T022 [P] [US1] Implement opponent selector in PowerModal.vue for peek_opponent and blind_swap power types
-- [ ] T023 [P] [US1] Add auto-peek display in PowerModal.vue for look_own (K) power with "Card will be auto-selected" message
-- [ ] T024 [US1] Implement modal footer in PowerModal.vue with Skip button and Activate button (disabled until valid selection)
-- [ ] T025 [US1] Use Nuxt UI `UModal` component with `prevent-close` prop in PowerModal.vue for blocking interaction
-- [ ] T026 [US1] Add 5-second countdown timer display in PowerModal.vue for peek powers (client-side UI only, server controls actual timeout)
+- [X] T020 [P] [US1] Create app/components/Game/PowerModal.vue with props (powerType, players, myCards) and emits (activate, skip)
+- [X] T021 [P] [US1] Implement card selection grid (2x2) in PowerModal.vue with touch-friendly buttons (44x44px minimum) and selected state styling
+- [X] T022 [P] [US1] Implement opponent selector in PowerModal.vue for peek_opponent and blind_swap power types
+- [X] T023 [P] [US1] Add auto-peek display in PowerModal.vue for look_own (K) power with "Card will be auto-selected" message
+- [X] T024 [US1] Implement modal footer in PowerModal.vue with Skip button and Activate button (disabled until valid selection)
+- [X] T025 [US1] Use Nuxt UI `UModal` component with `prevent-close` prop in PowerModal.vue for blocking interaction
+- [X] T026 [US1] Add 5-second countdown timer display in PowerModal.vue for peek powers (client-side UI only, server controls actual timeout)
 
 #### Client Integration
 
@@ -125,10 +125,10 @@ description: "Task list for Game Completion - Special Powers & Scoring"
 
 #### Client Components
 
-- [ ] T041 [P] [US2] Create app/components/Game/CambioButton.vue with props (canCallCambio, gamePhase) and emit (callCambio)
-- [ ] T042 [US2] Implement confirmation modal in CambioButton.vue with "Are you sure?" message and cancel/confirm buttons
-- [ ] T043 [US2] Add button disabled state logic in CambioButton.vue (disabled unless canCallCambio=true and gamePhase='playing')
-- [ ] T044 [US2] Style CambioButton.vue with prominent red color and large size for touch accessibility
+- [X] T041 [P] [US2] Create app/components/Game/CambioButton.vue with props (canCallCambio, gamePhase) and emit (callCambio)
+- [X] T042 [US2] Implement confirmation modal in CambioButton.vue with "Are you sure?" message and cancel/confirm buttons
+- [X] T043 [US2] Add button disabled state logic in CambioButton.vue (disabled unless canCallCambio=true and gamePhase='playing')
+- [X] T044 [US2] Style CambioButton.vue with prominent red color and large size for touch accessibility
 
 #### Client Integration
 
@@ -171,19 +171,19 @@ description: "Task list for Game Completion - Special Powers & Scoring"
 
 #### Client Components
 
-- [ ] T063 [P] [US3] Create app/components/Game/ScoreBoard.vue with props (scores: PlayerScore[])
-- [ ] T064 [US3] Implement table layout in ScoreBoard.vue with columns: Player, Cards, Base Score, Penalty, Final Score, Result
-- [ ] T065 [US3] Add winner highlighting in ScoreBoard.vue with green background for isWinner=true rows
-- [ ] T066 [US3] Display "Cambio Caller" badge in ScoreBoard.vue for isCambioCaller=true players
-- [ ] T067 [US3] Render final cards in ScoreBoard.vue as rank+suit abbreviations (e.g., "7H", "KS")
-- [ ] T068 [US3] Display penalty indicator in ScoreBoard.vue as "x2" for penaltyApplied=true, "-" otherwise
-- [ ] T069 [P] [US3] Create app/components/Game/GameOverModal.vue with props (winners: WinnerInfo[], gameId)
-- [ ] T070 [US3] Implement winner announcement in GameOverModal.vue with confetti or celebration animation (optional)
-- [ ] T071 [US3] Add "View Full Scores" button in GameOverModal.vue that navigates to ScoreBoard view
+- [X] T063 [P] [US3] Create app/components/Game/ScoreBoard.vue with props (scores: PlayerScore[])
+- [X] T064 [US3] Implement table layout in ScoreBoard.vue with columns: Player, Cards, Base Score, Penalty, Final Score, Result
+- [X] T065 [US3] Add winner highlighting in ScoreBoard.vue with green background for isWinner=true rows
+- [X] T066 [US3] Display "Cambio Caller" badge in ScoreBoard.vue for isCambioCaller=true players
+- [X] T067 [US3] Render final cards in ScoreBoard.vue as rank+suit abbreviations (e.g., "7H", "KS")
+- [X] T068 [US3] Display penalty indicator in ScoreBoard.vue as "x2" for penaltyApplied=true, "-" otherwise
+- [X] T069 [P] [US3] Create app/components/Game/GameOverModal.vue with props (winners: WinnerInfo[], gameId)
+- [X] T070 [US3] Implement winner announcement in GameOverModal.vue with confetti or celebration animation (optional)
+- [X] T071 [US3] Add "View Full Scores" button in GameOverModal.vue that navigates to ScoreBoard view
 
 #### Client Integration
 
-- [ ] T072 [US3] Extend app/composables/useGameActions.ts with `getScores()` function that GETs from /api/game/[id]/scores
+- [X] T072 [US3] Extend app/composables/useGameActions.ts with `getScores()` function that GETs from /api/game/[id]/scores
 - [ ] T073 [US3] Add WebSocket event listener in GameBoard.vue for `GAME_COMPLETED` event
 - [ ] T074 [US3] Fetch scores via `getScores()` when `GAME_COMPLETED` event received in GameBoard.vue
 - [ ] T075 [US3] Display GameOverModal in GameBoard.vue when game phase transitions to 'completed' with winners data
