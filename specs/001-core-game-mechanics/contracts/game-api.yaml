@@ -1,0 +1,439 @@
+openapi: 3.1.0
+info:
+  title: Cambio Game API
+  description: REST API for Cambio card game server-authoritative gameplay
+  version: 1.0.0
+  contact:
+    name: Cambio Development Team
+
+servers:
+  - url: http://localhost:3000/api
+    description: Local development server
+  - url: https://cambio.example.com/api
+    description: Production server
+
+paths:
+  /game/create:
+    post:
+      summary: Create a new game session
+      operationId: createGame
+      tags: [Game Management]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                player_count:
+                  type: integer
+                  minimum: 2
+                  maximum: 4
+                  description: Total players (human + bots)
+                bot_count:
+                  type: integer
+                  minimum: 0
+                  maximum: 3
+                  description: Number of AI bots to add
+                bot_difficulty:
+                  type: string
+                  enum: [easy, medium, hard]
+                  default: medium
+              required: [player_count]
+      responses:
+        '201':
+          description: Game created successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /game/{gameId}/join:
+    post:
+      summary: Join an existing game session
+      operationId: joinGame
+      tags: [Game Management]
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                room_code:
+                  type: string
+                  pattern: '^[A-Z0-9]{6}$'
+                  description: 6-character room code (alternative to gameId)
+      responses:
+        '200':
+          description: Joined game successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameState'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Game is full or already started
+
+  /game/{gameId}/state:
+    get:
+      summary: Get current game state
+      operationId: getGameState
+      tags: [Game State]
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      responses:
+        '200':
+          description: Current game state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GameState'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /game/{gameId}/action:
+    post:
+      summary: Perform a game action (draw, swap, discard)
+      operationId: performAction
+      tags: [Gameplay]
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/DrawFromDeckAction'
+                - $ref: '#/components/schemas/DrawFromDiscardAction'
+                - $ref: '#/components/schemas/SwapCardAction'
+                - $ref: '#/components/schemas/DiscardWithoutSwapAction'
+                - $ref: '#/components/schemas/UsePowerAction'
+              discriminator:
+                propertyName: action_type
+      responses:
+        '200':
+          description: Action performed successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          description: Not your turn or invalid action
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /game/{gameId}/cambio:
+    post:
+      summary: Call Cambio to end the round
+      operationId: callCambio
+      tags: [Gameplay]
+      parameters:
+        - $ref: '#/components/parameters/GameId'
+      responses:
+        '200':
+          description: Cambio called successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CambioResult'
+        '403':
+          description: Cannot call Cambio now (not your turn, already called)
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  parameters:
+    GameId:
+      name: gameId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Unique game session identifier
+
+  schemas:
+    Card:
+      type: object
+      required: [rank, suit, value]
+      properties:
+        rank:
+          type: string
+          enum: ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A']
+        suit:
+          type: string
+          enum: [hearts, diamonds, clubs, spades]
+        value:
+          type: integer
+          minimum: 0
+          maximum: 10
+        visible_to:
+          type: array
+          items:
+            type: string
+            format: uuid
+          description: Player IDs who can see this card
+
+    GameCreated:
+      type: object
+      required: [game_id, room_code, status]
+      properties:
+        game_id:
+          type: string
+          format: uuid
+        room_code:
+          type: string
+          pattern: '^[A-Z0-9]{6}$'
+        status:
+          type: string
+          enum: [waiting, active]
+        players:
+          type: array
+          items:
+            $ref: '#/components/schemas/Player'
+
+    Player:
+      type: object
+      required: [id, position, is_bot]
+      properties:
+        id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+        position:
+          type: integer
+          minimum: 0
+          maximum: 3
+        is_bot:
+          type: boolean
+        bot_difficulty:
+          type: string
+          enum: [easy, medium, hard]
+          nullable: true
+        cards:
+          type: array
+          items:
+            $ref: '#/components/schemas/Card'
+          minItems: 4
+          maxItems: 4
+          description: Cards visible only to this player or via powers
+        score:
+          type: integer
+        connection_status:
+          type: string
+          enum: [connected, disconnected, bot_takeover]
+
+    GameState:
+      type: object
+      required: [game_id, status, phase, current_turn, players]
+      properties:
+        game_id:
+          type: string
+          format: uuid
+        room_code:
+          type: string
+        status:
+          type: string
+          enum: [waiting, active, final_round, completed, abandoned]
+        phase:
+          type: string
+          enum: [setup, initial_view, playing, final_round, scoring, complete]
+        current_turn:
+          type: integer
+          minimum: 0
+          maximum: 3
+        players:
+          type: array
+          items:
+            $ref: '#/components/schemas/Player'
+          minItems: 2
+          maxItems: 4
+        draw_pile_count:
+          type: integer
+          description: Number of cards remaining in draw pile (not revealed)
+        top_discard:
+          allOf:
+            - $ref: '#/components/schemas/Card'
+            - nullable: true
+        cambio_caller_id:
+          type: string
+          format: uuid
+          nullable: true
+        my_player_id:
+          type: string
+          format: uuid
+          description: Current authenticated player's ID in this game
+
+    DrawFromDeckAction:
+      type: object
+      required: [action_type]
+      properties:
+        action_type:
+          type: string
+          enum: [draw_from_deck]
+
+    DrawFromDiscardAction:
+      type: object
+      required: [action_type]
+      properties:
+        action_type:
+          type: string
+          enum: [draw_from_discard]
+
+    SwapCardAction:
+      type: object
+      required: [action_type, position]
+      properties:
+        action_type:
+          type: string
+          enum: [swap_card]
+        position:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: Which of the 4 cards to swap (0=top-left, 1=top-right, 2=bottom-left, 3=bottom-right)
+
+    DiscardWithoutSwapAction:
+      type: object
+      required: [action_type]
+      properties:
+        action_type:
+          type: string
+          enum: [discard_without_swap]
+
+    UsePowerAction:
+      type: object
+      required: [action_type, power_type]
+      properties:
+        action_type:
+          type: string
+          enum: [use_power]
+        power_type:
+          type: string
+          enum: [peek_own, peek_opponent, blind_swap, look_own]
+        target_position:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: Position of card to peek/swap (own card for peek_own/look_own)
+        target_player_id:
+          type: string
+          format: uuid
+          description: Required for peek_opponent and blind_swap
+        target_player_position:
+          type: integer
+          minimum: 0
+          maximum: 3
+          description: Opponent's card position for peek_opponent/blind_swap
+
+    ActionResult:
+      type: object
+      required: [success, action_type]
+      properties:
+        success:
+          type: boolean
+        action_type:
+          type: string
+        drawn_card:
+          allOf:
+            - $ref: '#/components/schemas/Card'
+            - nullable: true
+        revealed_card:
+          allOf:
+            - $ref: '#/components/schemas/Card'
+            - nullable: true
+          description: Card revealed by peek/look power (only visible to actor)
+        power_activated:
+          type: string
+          enum: [peek_own, peek_opponent, blind_swap, look_own]
+          nullable: true
+        next_turn:
+          type: integer
+          minimum: 0
+          maximum: 3
+        game_state:
+          $ref: '#/components/schemas/GameState'
+
+    CambioResult:
+      type: object
+      required: [cambio_called, caller_id, final_round_started]
+      properties:
+        cambio_called:
+          type: boolean
+        caller_id:
+          type: string
+          format: uuid
+        final_round_started:
+          type: boolean
+        remaining_turns:
+          type: integer
+          description: Number of players who still need to take their final turn
+        game_state:
+          $ref: '#/components/schemas/GameState'
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters or payload
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+              details:
+                type: object
+
+    Unauthorized:
+      description: Authentication required or failed
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Unauthorized
+
+    NotFound:
+      description: Game session not found
+      content:
+        application/json:
+          schema:
+            type: object
+            properties:
+              error:
+                type: string
+                example: Game not found
+
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Better Auth JWT token
+
+security:
+  - BearerAuth: []
+
+tags:
+  - name: Game Management
+    description: Creating and joining games
+  - name: Game State
+    description: Retrieving current game state
+  - name: Gameplay
+    description: Turn actions and game progression
